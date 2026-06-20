@@ -131,10 +131,14 @@ public class UserStepDefinition extends Utils {
      */
     @And("optionally {string} is present in response")
     public void optionally_is_present_in_response(String key) {
-        String body = response.asString();
-        if (body.contains("\"" + key + "\"")) {
-            System.out.println("[Optional] '" + key + "' is present → " + getJsonPath(response, key));
-        } else {
+        try {
+            Object value = io.restassured.path.json.JsonPath.from(response.asString()).get(key);
+            if (value != null) {
+                System.out.println("[Optional] '" + key + "' is present → " + value);
+            } else {
+                System.out.println("[Optional] '" + key + "' is NOT present — skipping validation");
+            }
+        } catch (Exception e) {
             System.out.println("[Optional] '" + key + "' is NOT present — skipping validation");
         }
     }

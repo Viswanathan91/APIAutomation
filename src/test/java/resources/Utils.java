@@ -1,9 +1,12 @@
 package resources;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 import io.restassured.builder.RequestSpecBuilder;
@@ -19,13 +22,14 @@ public class Utils {
     private static RequestSpecification placesReqSpec;
     private static RequestSpecification reqresReqSpec;
 
-    /**
-     * Singleton RequestSpecification for the Places API.
-     * Base URI and API key are read from the active environment properties file.
-     */
+    // Properties cache — avoids reloading the file on every getGlobalVariables() call
+    private static final Map<String, Properties> propsCache = new HashMap<>();
+
+    private static final String LOG_PATH = "target" + File.separator + "logs" + File.separator + "api-test.log";
+
     public RequestSpecification requestSpecification() throws IOException {
         if (placesReqSpec == null) {
-            PrintStream log = new PrintStream(new FileOutputStream("logging.txt"));
+            PrintStream log = buildLogStream(false);
             placesReqSpec = new RequestSpecBuilder()
                     .setContentType(ContentType.JSON)
                     .setBaseUri(getGlobalVariables("baseURI"))
@@ -37,14 +41,9 @@ public class Utils {
         return placesReqSpec;
     }
 
-    /**
-     * Singleton RequestSpecification for the jsonplaceholder.typicode.com Post API.
-     * Uses a separate base URI key so both APIs can coexist in the same run.
-     * Logs are appended to the same logging.txt file.
-     */
     public RequestSpecification reqresRequestSpecification() throws IOException {
         if (reqresReqSpec == null) {
-            PrintStream log = new PrintStream(new FileOutputStream("logging.txt", true)); // append
+            PrintStream log = buildLogStream(true); // append so both specs share the file
             reqresReqSpec = new RequestSpecBuilder()
                     .setContentType(ContentType.JSON)
                     .setBaseUri(getGlobalVariables("jsonPlaceholderBaseURI"))
@@ -55,26 +54,30 @@ public class Utils {
         return reqresReqSpec;
     }
 
-    /**
-     * Reads a property from the active environment file.
-     * The environment is selected by the JVM system property "env" (default: sit).
-     * Run with: mvn test -Denv=uat
-     */
     public static String getGlobalVariables(String key) throws IOException {
         String env = System.getProperty("env", "sit");
-        Properties p = new Properties();
-        InputStream is = Utils.class.getClassLoader().getResourceAsStream(env + ".properties");
-        if (is == null) {
-            throw new RuntimeException("Properties file not found for environment: " + env
-                    + ". Expected: src/test/resources/" + env + ".properties");
+        if (!propsCache.containsKey(env)) {
+            Properties p = new Properties();
+            InputStream is = Utils.class.getClassLoader().getResourceAsStream(env + ".properties");
+            if (is == null) {
+                throw new RuntimeException(
+                    "Properties file not found for environment: " + env
+                    + ". Expected on classpath: " + env + ".properties");
+            }
+            p.load(is);
+            propsCache.put(env, p);
         }
-        p.load(is);
-        return p.getProperty(key);
+        return propsCache.get(env).getProperty(key);
     }
 
     public String getJsonPath(Response response, String key) {
-        String res = response.asString();
-        JsonPath js = new JsonPath(res);
+        JsonPath js = new JsonPath(response.asString());
         return js.get(key).toString();
+    }
+
+    private static PrintStream buildLogStream(boolean append) throws IOException {
+        File logDir = new File("target" + File.separator + "logs");
+        logDir.mkdirs();
+        return new PrintStream(new FileOutputStream(LOG_PATH, append));
     }
 }
